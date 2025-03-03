@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Starch.One Sticker Designer – Click & Drag (Refined)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: black;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: sans-serif;
+      user-select: none;
+    }
+    canvas {
+      background: #000;
+      cursor: crosshair;
+      display: block;
+    }
+  </style>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Orbitron&family=Roboto:wght@700&family=Press+Start+2P&family=Luckiest+Guy&family=Alfa+Slab+One&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="stickerCanvas"></canvas>
+
+<script>
+/* ------------------------------
+   State Setup
+   We use a state object that holds parameters as fractions of the faceRadius or canvas width.
+   The face circle is fixed: faceRadius = canvas.width * 0.4.
+   The text parameters (size and margin) are fractions of canvas width.
+------------------------------ */
+const canvas = document.getElementById('stickerCanvas');
+const ctx = canvas.getContext('2d');
+let baseSize = 600; // our internal drawing reference
+canvas.width = baseSize;
+canvas.height = baseSize;
+
+// Available fonts for text (logo)
+const availableFonts = [
+  "Anton", "Orbitron", "Roboto", "Press Start 2P", "Luckiest Guy", "Alfa Slab One"
+];
+
+// Our design state, expressed as fractions (or absolute for text factors)
+let state = {
+  // Eyes relative to faceRadius:
+  eyeYoffset: -0.2,      // negative means above face center
+  eyeSep: 0.3,           // separation as fraction of faceRadius
+  eyeSize: 0.1,          // eye radius as fraction of faceRadius
+
+  // Mouth relative to faceRadius:
+  mouthYoffset: 0.4,     // vertical offset from face center (positive: below center)
+  mouthWidth: 0.3,       // half-length of mouth as fraction of faceRadius
+  mouthThick: 0.04,      // thickness as fraction of faceRadius
+  // Mouth is always centered horizontally (fixed at 0.5)
+
+  // Text parameters relative to canvas width:
+  textSizeFactor: 0.06,  // text size as fraction of canvas width
+  textMarginFactor: 0.05,// margin from face to text as fraction of canvas width
+
+  // Font index for text:
+  fontIndex: 0,
+
+  // (Optionally, text content could be randomized here.)
+};
+
+// ------------------------------
+// Utility: Randomize state for a given region
+// ------------------------------
+function randomizeBackground() {
+  // Randomize everything except face size/text unit (which are fixed by canvas)
+  state.eyeYoffset = -0.4 + Math.random() * 0.3;  // range -0.3 to 0
+  state.eyeSep = 0.2 + Math.random() * 0.4;         // range 0.2 to 0.5
+  state.eyeSize = 0.05 + Math.random() * 0.1;         // range 0.05 to 0.15
+  state.mouthYoffset = -0.1 + Math.random() * 0.3;     // range 0.3 to 0.6
+  state.mouthWidth = 0.5 + Math.random() * 0.2;       // range 0.2 to 0.5
+  state.mouthThick = 0.05 + Math.random() * 0.1;     // range 0.02 to 0.07
+  state.textSizeFactor = 0.05 + Math.random() * 0.03; // range 0.05 to 0.08
+  state.textMarginFactor = 0.03 + Math.random() * 0.04;// range 0.03 to 0.07
+  state.fontIndex = Math.floor(Math.random() * availableFonts.length);
+}
+
+function randomizeFaceFeatures() {
+  // Randomize eyes and mouth only
+  state.eyeYoffset = -0.2 + Math.random() * 0.2;
+  state.eyeSep = 0.2 + Math.random() * 0.2;
+  state.eyeSize = 0.05 + Math.random() * 0.1;
+  state.mouthYoffset = 0.3 + Math.random() * 0.2;
+  state.mouthWidth = 0.2 + Math.random() * 0.2;
+  state.mouthThick = 0.02 + Math.random() * 0.05;
+}
+
+function randomizeEyeFeatures() {
+  // Randomize eye size only for simplicity
+  state.eyeSize = 0.05 + Math.random() * 0.1;
+}
+
+function randomizeMouth() {
+  // Randomize mouth width, vertical offset, thickness
+  state.mouthYoffset = 0.3 + Math.random() * 0.3;
+  state.mouthWidth = 0.2 + Math.random() * 0.3;
+  state.mouthThick = 0.02 + Math.random() * 0.05;
+}
+
+function randomizeText() {
+  // Only randomize the text's font (and maybe other style factors)
+  state.fontIndex = (state.fontIndex + 1) % availableFonts.length;
+  // Optionally, also randomize textSizeFactor and textMarginFactor:
+  state.textSizeFactor = 0.05 + Math.random() * 0.03;
+  state.textMarginFactor = 0.03 + Math.random() * 0.04;
+}
+
+// ------------------------------
+// Drawing Function
+// ------------------------------
+function drawSticker() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Fixed computations:
+  // Face circle is always max width with 10% margin:
+  // canvas width * 0.8 is the available width; radius is half of that.
+  const faceRadius = canvas.width * 0.4;
+
+  // Text parameters based on canvas width:
+  const textSize = canvas.width * state.textSizeFactor;
+  const textMargin = canvas.width * state.textMarginFactor;
+
+  // Center the unit (face circle + text block) vertically:
+  const totalUnitHeight = faceRadius * 2 + textMargin + textSize;
+  const offsetY = (canvas.height - totalUnitHeight) / 2;
+  const cx = canvas.width / 2;
+  const cy = offsetY + faceRadius; // face center
+
+  // Draw face circle (fixed)
+  ctx.fillStyle = "#FEE600";
+  ctx.beginPath();
+  ctx.arc(cx, cy, faceRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Draw Eyes:
+  // Eye vertical position: relative to face center using state.eyeYoffset (fraction of faceRadius)
+  const eyeY = cy + state.eyeYoffset * faceRadius;
+  const eyeSep = state.eyeSep * faceRadius;  // horizontal offset from center
+  const eyeSize = state.eyeSize * faceRadius;
+  ctx.fillStyle = "black";
+  ctx.beginPath();
+  ctx.arc(cx - eyeSep, eyeY, eyeSize, 0, Math.PI * 2); // left eye
+  ctx.arc(cx + eyeSep, eyeY, eyeSize, 0, Math.PI * 2); // right eye
+  ctx.fill();
+
+  // Draw Mouth:
+  // Always centered horizontally; use state parameters for width and vertical offset.
+  const mouthY = cy + state.mouthYoffset * faceRadius;
+  const mouthWidth = state.mouthWidth * faceRadius;
+  const mouthThick = state.mouthThick * faceRadius;
+  ctx.strokeStyle = "black";
+  ctx.lineWidth = mouthThick;
+  ctx.beginPath();
+  ctx.moveTo(cx - mouthWidth, mouthY);
+  ctx.lineTo(cx + mouthWidth, mouthY);
+  ctx.stroke();
+
+  // Draw Text (Logo):
+  let fontName = availableFonts[state.fontIndex];
+  let text = (fontName === "Roboto" || fontName === "Luckiest Guy") ? "Starch.One" : "STARCH.ONE";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "#FEE600";
+  ctx.font = `${textSize}px '${fontName}', sans-serif`;
+  const textY = cy + faceRadius + textMargin;
+  ctx.fillText(text, cx, textY);
+}
+
+// ------------------------------
+// Hit Testing (Determine region based on click coordinates)
+// ------------------------------
+function hitTest(x, y) {
+  const faceRadius = canvas.width * 0.4;
+  const textSize = canvas.width * state.textSizeFactor;
+  const textMargin = canvas.width * state.textMarginFactor;
+
+  // Compute face center as drawn
+  const totalUnitHeight = faceRadius * 2 + textMargin + textSize;
+  const offsetY = (canvas.height - totalUnitHeight) / 2;
+  const cx = canvas.width / 2;
+  const cy = offsetY + faceRadius;
+
+  // Check Text Region: bounding box around text
+  ctx.save();
+  let fontName = availableFonts[state.fontIndex];
+  ctx.font = `${canvas.width * state.textSizeFactor}px '${fontName}', sans-serif`;
+  const measure = ctx.measureText("STARCH.ONE");
+  ctx.restore();
+  const textWidth = measure.width;
+  const textX = cx;
+  const textTop = cy + faceRadius + textMargin;
+  const textBottom = textTop + canvas.width * state.textSizeFactor;
+  if (x >= textX - textWidth/2 && x <= textX + textWidth/2 &&
+      y >= textTop && y <= textBottom) {
+    return { region: "text" };
+  }
+
+  // Check Mouth Region: bounding box around mouth line
+  const mouthY = cy + state.mouthYoffset * faceRadius;
+  const mouthWidth = state.mouthWidth * faceRadius;
+  const mouthThick = state.mouthThick * faceRadius;
+  const mouthLeft = cx - mouthWidth - 5;
+  const mouthRight = cx + mouthWidth + 5;
+  const mouthTop = mouthY - mouthThick/2 - 5;
+  const mouthBottom = mouthY + mouthThick/2 + 5;
+  if (x >= mouthLeft && x <= mouthRight && y >= mouthTop && y <= mouthBottom) {
+    return { region: "mouth" };
+  }
+
+  // Check Eyes Regions:
+  const eyeY = cy + state.eyeYoffset * faceRadius;
+  const eyeSep = state.eyeSep * faceRadius;
+  const eyeSize = state.eyeSize * faceRadius;
+  // Left Eye:
+  if (Math.hypot(x - (cx - eyeSep), y - eyeY) < eyeSize) {
+    return { region: "eye", which: "left" };
+  }
+  // Right Eye:
+  if (Math.hypot(x - (cx + eyeSep), y - eyeY) < eyeSize) {
+    return { region: "eye", which: "right" };
+  }
+  // Between Eyes (the horizontal band across the face where eyes are expected):
+  if (y >= eyeY - eyeSize*1.2 && y <= eyeY + eyeSize*1.2 &&
+      x > cx - faceRadius && x < cx + faceRadius) {
+    return { region: "eyesBetween" };
+  }
+
+  // Check Face Region (inside face circle)
+  if (Math.hypot(x - cx, y - cy) < faceRadius) {
+    return { region: "face" };
+  }
+
+  // Otherwise, it's Background.
+  return { region: "background" };
+}
+
+// ------------------------------
+// Mouse Interaction (Click & Drag)
+// ------------------------------
+let isDragging = false;
+let dragRegion = null;
+let dragStartX = 0, dragStartY = 0;
+let origState = {};
+
+canvas.addEventListener('mousedown', (e) => {
+  // Only process left-click events; ignore right-click (e.button !== 0)
+  if (e.button !== 0) return;
+
+  isDragging = true;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  dragRegion = hitTest(mx, my);
+  dragStartX = mx;
+  dragStartY = my;
+  origState = { ...state }; // Save current state for relative changes
+});
+
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isDragging || !dragRegion) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const dx = mx - dragStartX;
+  const dy = my - dragStartY;
+
+  // For adjustments, use canvas.width as reference for horizontal drags (text)
+  // and faceRadius (which is canvas.width*0.4) for features.
+  const faceRadius = canvas.width * 0.4;
+
+  switch(dragRegion.region) {
+    case "background":
+      // Drag in background: for this version, we do nothing on drag.
+      break;
+
+    case "face":
+      // Drag on face: randomize features on click; no drag action.
+      break;
+
+    case "eye":
+      // Drag on an individual eye: adjust eye size.
+      // Horizontal or vertical drag (magnitude) increases eye size if moving outward.
+      let eyeDelta = Math.hypot(dx, dy) / faceRadius;
+      // Increase size if dragging away from eye center, decrease if toward.
+      // For simplicity, add delta.
+      state.eyeSize = origState.eyeSize + (eyeDelta * 0.05);
+      // Clamp between 0.05 and 0.15
+      if (state.eyeSize < 0.05) state.eyeSize = 0.05;
+      if (state.eyeSize > 0.15) state.eyeSize = 0.15;
+      break;
+
+    case "eyesBetween":
+      // Drag between eyes: horizontal drag adjusts eye separation,
+      // vertical drag adjusts eye vertical offset.
+      state.eyeSep = origState.eyeSep + dx / faceRadius;
+      state.eyeYoffset = origState.eyeYoffset + dy / faceRadius;
+      // Clamp reasonable ranges:
+      if (state.eyeSep < 0.2) state.eyeSep = 0.2;
+      if (state.eyeSep > 0.5) state.eyeSep = 0.5;
+      if (state.eyeYoffset < -0.5) state.eyeYoffset = -0.5;
+      if (state.eyeYoffset > 0) state.eyeYoffset = 0;
+      break;
+
+    case "mouth":
+      // Drag in mouth region:
+      // Horizontal drag adjusts mouth width (right= wider, left= narrower)
+      state.mouthWidth = origState.mouthWidth + dx / faceRadius;
+      // Vertical drag adjusts mouth vertical offset (up = mouth moves up, down = moves down)
+      state.mouthYoffset = origState.mouthYoffset + dy / faceRadius;
+      // Clamp ranges:
+      if (state.mouthWidth < 0.2) state.mouthWidth = 0.2;
+      if (state.mouthWidth > 0.8) state.mouthWidth = 0.8;
+      if (state.mouthYoffset < -0.1) state.mouthYoffset = -0.1;
+      if (state.mouthYoffset > 0.6) state.mouthYoffset = 0.6;
+      break;
+
+    case "text":
+      // Drag in text region:
+      // Horizontal drag adjusts text size factor (right= larger, left= smaller)
+      state.textSizeFactor = origState.textSizeFactor + dx / canvas.width;
+      // Vertical drag adjusts text margin factor (up= more margin, down= less margin)
+      state.textMarginFactor = origState.textMarginFactor + dy / canvas.width;
+      // Clamp text size factor between 0.04 and 0.1, margin factor between 0.03 and 0.1
+      if (state.textSizeFactor < 0.04) state.textSizeFactor = 0.04;
+      if (state.textSizeFactor > 0.1) state.textSizeFactor = 0.1;
+      if (state.textMarginFactor < 0.03) state.textMarginFactor = 0.03;
+      if (state.textMarginFactor > 0.1) state.textMarginFactor = 0.1;
+      break;
+  }
+  drawSticker();
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  if (!isDragging) return;
+  isDragging = false;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const dx = mx - dragStartX;
+  const dy = my - dragStartY;
+  const dragDist = Math.hypot(dx, dy);
+
+  // Treat a very small drag as a click (threshold 5px)
+  if (dragDist < 5) {
+    const region = hitTest(mx, my);
+    switch(region.region) {
+      case "background":
+        randomizeBackground();
+        break;
+      case "face":
+        randomizeFaceFeatures();
+        break;
+      case "eye":
+        randomizeEyeFeatures();
+        break;
+      case "mouth":
+        randomizeMouth();
+        // Ensure mouth remains centered: always set center = 0.5.
+        break;
+      case "text":
+        randomizeText();
+        break;
+    }
+    drawSticker();
+  }
+  dragRegion = null;
+});
+
+// ------------------------------
+// Responsive Canvas Resizing
+// The canvas always fills the window (with limits), so that the design uses full available space.
+function handleResize() {
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+  let newSize = Math.min(w, h);
+  // Clamp to a minimum of 300 and maximum of 800
+  newSize = Math.max(Math.min(newSize, 800), 300);
+  canvas.width = newSize;
+  canvas.height = newSize;
+  drawSticker();
+}
+window.addEventListener('resize', handleResize);
+
+// ------------------------------
+// Initial Setup
+// ------------------------------
+randomizeBackground();
+handleResize();
+drawSticker();
+</script>
+</body>
+</html>
